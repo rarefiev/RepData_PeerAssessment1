@@ -5,21 +5,121 @@ output:
     keep_md: true
 ---
 
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.path='figure/', warning=FALSE, message=FALSE)
+```
 
 ## Loading and preprocessing the data
 
+Unzip the data file into a temporary directory, then read data frame, converting date column into Date (NA means default conversion in colClasses).
 
+```{r load}
+tmp <- tempdir()
+unzip('./activity.zip', exdir = tmp)
+df <- read.csv(file.path(tmp, 'activity.csv'), colClasses = c(NA, 'Date', NA))
+```
 
 ## What is mean total number of steps taken per day?
 
+Calculate and make histogram of total steps per day, excluding NA values.
+
+```{r steps_per_day}
+library(ggplot2)
+dfDef <- subset(df, !is.na(steps))
+stepsPerDay <- aggregate(x = dfDef$steps, by = list(date = dfDef$date), FUN = sum)
+qplot(stepsPerDay$x, bins = 20, xlab = 'Steps per day', main = 'Histogram of steps per day')
+```
+
+Let's calculate mean and median of total steps per day.
+
+```{r mean_per_day}
+# 
+meanStepsPerDay <- mean(stepsPerDay$x)
+medianStepsPerDay <- median(stepsPerDay$x)
+```
+
+The mean of total steps per day is `r meanStepsPerDay` and the median of total steps per day is `r medianStepsPerDay`.
 
 
 ## What is the average daily activity pattern?
 
+Let's create a time series plot of average daily activity.
 
+```{r avg_daily_activity}
+avgDailyActivity <- aggregate(x = dfDef$steps, by = list(interval = dfDef$interval), FUN = mean)
+qplot(interval, x, 
+      data = avgDailyActivity, 
+      xlab = 'Daytime', ylab = 'Avg. number of steps', main = 'Daily Activity Graph', geom = 'line')
+```
+
+The interval with maximum number of steps
+
+```{r max_daily_number_of_steps}
+avgDailyActivity[avgDailyActivity$x == max(avgDailyActivity$x),]$interval
+```
 
 ## Imputing missing values
 
+The number of rows with NA in steps column. 
+
+```{r rows_with_na}
+nrow(df[is.na(df$steps),])
+```
+
+Note that no rows with NA in date or interval columns.
+
+```{r na_date}
+nrow(df[is.na(df$date),])
+nrow(df[is.na(df$interval),])
+```
+But for example, data for 2012-10-01 contains only NA. 
+
+So, let's replace NA values with averages for the same daily interval.
+
+```{r fill_na}
+avgSteps <- avgDailyActivity$x
+names(avgSteps) <- avgDailyActivity$interval
+
+dfFilled <- data.frame(df)
+for (i in 1:nrow(df)) {
+    if (is.na(df[i, 'steps'])) {
+        dfFilled[i, 'steps'] <- avgSteps[[as.character(df[i, 'interval'])]]
+    }
+}
+```
+
+Let's make the same histogram as above but for the data frame with imputed values.
+
+```{r hist_imputed_value }
+
+stepsPerDay <- aggregate(x = dfFilled$steps, by = list(date = dfFilled$date), FUN = sum)
+qplot(stepsPerDay$x, bins = 20, xlab = 'Steps per day', main = 'Histogram of steps per day w/ imputed values')
+meanStepsPerDayImp <- mean(stepsPerDay$x)
+medianStepsPerDayImp <- median(stepsPerDay$x)
+```
+
+Let's compare mean and median
+
+```{r compare}
+meanStepsPerDayImp == meanStepsPerDay
+medianStepsPerDayImp == medianStepsPerDay
+```
+
+Mean for imputed values `r meanStepsPerDayImp`, mean for NA ignored  `r meanStepsPerDay`.
+
+Median for imputed values `r medianStepsPerDayImp`, median for NA ignored `r medianStepsPerDay`.
 
 
 ## Are there differences in activity patterns between weekdays and weekends?
+
+We can easily see the difference in daily activity from the plot below.
+
+```{r weekdays_daily_activity}
+dfFilled$wd <- weekdays(dfFilled$date, abbreviate = TRUE)
+dfFilled$day <- rep('weekday')
+dfFilled[dfFilled$wd %in% c('Sat', 'Sun'), ]$day <- rep('weekend')
+dfFilled$day <- as.factor(dfFilled$day)
+avgDailyActivityPerDayType <- aggregate(x = dfFilled$steps, by = list(day = dfFilled$day, interval = dfFilled$interval),  mean)
+qplot(interval, x, data = avgDailyActivityPerDayType, facets = day ~ ., geom = 'line', xlab = 'interval', ylab = 'Number of steps', main = 'Avg daily activity per weekdays')
+```
+
